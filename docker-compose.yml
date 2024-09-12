@@ -1,0 +1,40 @@
+services:
+  postgres:
+    image: postgres:14.13
+    container_name: postgres
+    environment:
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+      POSTGRES_DB: mydatabase
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  app-old:
+    build: .
+    container_name: app-old
+    environment:
+      DATABASE_URL: "postgresql://myuser:mypassword@postgres:5432/mydatabase?schema=public&connection_limit=17&connect_timeout=0"
+    depends_on:
+      - postgres
+    command: ["node", "lib/index.js"]
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+  
+  app-new:
+    build: .
+    container_name: app-new
+    environment:
+      DATABASE_URL: "postgresql://myuser:mypassword@postgres:5432/mydatabase"
+      PRISMA_QUERY_ENGINE_LIBRARY: "/app/libquery_engine.so"
+    depends_on:
+      - postgres
+    command: ["node", "lib/index.js"]
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+
+volumes:
+  postgres_data:

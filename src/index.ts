@@ -1,35 +1,21 @@
 import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient();
+let prisma = new PrismaClient(); 
 
-async function createUsersConcurrently() {
-  const createPromises = [];
+async function queryConcurrently(max: number) {
+  try {
+    const queryPromises = [];
+    for (let i = 1; i <= max; i++) {
+      queryPromises.push(
+        prisma.$queryRaw`SELECT 1`
+      );
+    }
 
-  for (let i = 1; i <= 11; i++) {
-    createPromises.push(
-      prisma.user.create({
-        data: { name: `User${i}` },
-      })
-    );
+    await Promise.all(queryPromises);
+  } catch(e) {
+    console.log('query error', e);
   }
-
-  const newUsers = await Promise.all(createPromises);
-  console.log('Created new users total: ', newUsers.length);
-}
-
-async function queryUsersConcurrently() {
-  const queryPromises = [];
-
-  for (let i = 1; i <= 11; i++) {
-    queryPromises.push(
-      prisma.user.findMany({
-        where: { name: `User${i}` },
-      })
-    );
-  }
-
-  const allUsers = await Promise.all(queryPromises);
-  console.log('Queried users total: ', allUsers.length);
+  
 }
 
 function sleep(ms: number) {
@@ -37,18 +23,16 @@ function sleep(ms: number) {
 }
 
 async function main() {
-  await createUsersConcurrently();
-  await printConnectionMetrics();
-
   while (true) {
-    console.log('Sleeping for 5 minutes...');
-    await sleep(300000);
-
-    await queryUsersConcurrently();
+    await queryConcurrently(17);
     await printConnectionMetrics();
+    console.log('Sleeping for 360s...');
+    await sleep(360_000);
   }
 }
 
+let lastSum = 0;
+let lastCount = 0;
 async function printConnectionMetrics() {
   const metrics = await prisma.$metrics.json()
   metrics.counters.forEach(v => {
@@ -59,6 +43,13 @@ async function printConnectionMetrics() {
   metrics.gauges.forEach(v => {
     if (v.key === 'prisma_pool_connections_open' || v.key === 'prisma_pool_connections_idle') {
       console.log(`${v.key}: ${v.value}`)
+    }
+  })
+  metrics.histograms.forEach(v => {
+    if (v.key === 'prisma_client_queries_wait_histogram_ms') {
+      console.log(`${v.key}: ${(v.value.sum-lastSum) / (v.value.count - lastCount)}`)
+      lastSum = v.value.sum
+      lastCount = v.value.count
     }
   })
 }
